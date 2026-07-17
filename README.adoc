@@ -13,6 +13,69 @@ A debugging tool to help you examine and debug your link:https://snowplow.io[Sno
 
 Feedback, feature requests, pull requests, and bug reports are welcome! Please link:https://github.com/snowplow/chrome-snowplow-inspector/issues[file an issue].
 
+== Understood fork: Contentful resolver
+
+This is Understood.org's fork of link:https://github.com/snowplow/chrome-snowplow-inspector[snowplow/chrome-snowplow-inspector].
+It adds a *Contentful resolver*: bare Contentful IDs in `org.understood` event entities (like `content_id: "3K9dOxAbCd"`) are decorated inline in the event detail view with the resolved entry title and content type, hyperlinked to the entry in the Contentful web app.
+With no spaces configured the feature is a complete no-op, so the fork behaves exactly like upstream out of the box.
+
+=== Setup
+
+. Use Node 22 LTS, then `npm install` (this also builds `dist/`; rebuild later with `npm start` for a watch loop).
+. Open `chrome://extensions`, enable Developer mode, and *Load unpacked* pointing at `dist/`.
+. Right-click the extension > Options (or use `chrome://extensions` > Details > Extension options) and fill in the *Contentful* section: one row per space (label, space ID, environment — usually `master` — and a Delivery API token; add a Preview API token if you want draft entries resolved and flagged).
+. Tokens live in the Contentful web app under Settings > API keys for each space — the same values as the `CONTENTFUL_*_ACCESS_TOKEN` entries in the web repo's `.env.local`. Each engineer pastes their own tokens; they are stored in your Chrome profile's `chrome.storage.sync`, like the extension's other credentials.
+. Open DevTools on a page with Understood tracking and expand a `content`, `content_reference`, or `content_metadata` entity: recognized IDs show a linked title badge. A broken token shows a ⚠️ marker with details on hover and the space is skipped for the rest of the session.
+
+=== Detection rules
+
+Which entity fields are treated as Contentful IDs is configurable in the options page as a JSON array of rules; the defaults cover the `org.understood` entities:
+
+[source,json]
+----
+[
+  {
+    "schema": "iglu:org.understood/content/jsonschema/1-*",
+    "paths": ["content_id", "component_id", "child_component_id",
+              "parent_component_id", "linked_content_id"],
+    "kind": "entry"
+  },
+  {
+    "schema": "iglu:org.understood/content/jsonschema/1-*",
+    "paths": ["content_type_id"],
+    "kind": "content-type"
+  },
+  {
+    "schema": "iglu:org.understood/content_reference/jsonschema/2-*",
+    "paths": ["id"],
+    "discriminator": { "field": "type", "map": { "entry": "entry", "asset": "asset" } }
+  },
+  {
+    "schema": "iglu:org.understood/content_metadata/jsonschema/1-*",
+    "paths": ["data.*.id"],
+    "discriminator": { "field": "type", "map": { "entry": "entry", "asset": "asset" } }
+  }
+]
+----
+
+`schema` is an Iglu URI pattern (`*` wildcards allowed per segment), `paths` are dot-separated locations within the entity data (`*` matches any single key or array index), and the kind of ID is either fixed (`kind`: `entry`, `asset`, or `content-type`) or derived from a sibling field (`discriminator`); values not in the discriminator map are left undecorated.
+Leave the rules field empty to use these defaults.
+The implementation lives in `src/ts/contentful/` and is deliberately generic — nothing Understood-specific is hardcoded outside the default rules — so it could be offered upstream.
+
+=== Syncing with upstream
+
+`main` mirrors `upstream/main` and never carries our commits; the fork's changes live on `understood-main` (kept to new files plus minimal edits to `EventPayload/index.tsx`, `SnowplowInspector.tsx`, and `options.tsx` so rebases stay cheap).
+
+[source,bash]
+----
+git remote add upstream https://github.com/snowplow/chrome-snowplow-inspector.git # once
+git fetch upstream
+git checkout main && git merge --ff-only upstream/main && git push
+git checkout understood-main && git rebase main && git push --force-with-lease
+----
+
+Internal releases are tagged `v<upstream-version>-understood.<n>` (e.g. `v0.4.6-understood.1`); the manifest version itself stays in lockstep with upstream because Chrome requires purely numeric versions.
+
 == Install
 At the moment, only Chrome/Chromium are supported via an official app store, and builds for Firefox are available, but not supported.
 The extension also works in link:https://www.microsoft.com/en-us/edge[Microsoft Edge], but is not yet in the extension store.

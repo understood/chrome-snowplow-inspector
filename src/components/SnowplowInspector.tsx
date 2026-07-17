@@ -17,6 +17,7 @@ import type { Application, BatchContents, OAuthResult } from "../ts/types";
 import { isSnowplow } from "../ts/util";
 import { useSignals } from "../ts/useSignals";
 import { Resolver } from "../ts/iglu/Resolver";
+import { ContentResolver } from "../ts/contentful";
 import { DestinationManager } from "../ts/DestinationManager";
 
 import {
@@ -25,6 +26,7 @@ import {
   type ModalOptions,
   type ModalSetter,
 } from "./Modals";
+import { ContentfulContext } from "./ContentfulContext";
 import { Debugger } from "./Debugger";
 import { SchemaManager } from "./SchemaManager";
 import { Attributes, Interventions } from "./Signals";
@@ -50,6 +52,7 @@ export const SnowplowInspector: FunctionComponent = () => {
   const modalOpts = useRef<ModalOptions>();
 
   const resolver = useMemo(() => new Resolver(), []);
+  const contentResolver = useMemo(() => new ContentResolver(), []);
   const destinationManager = useMemo(() => new DestinationManager(), []);
 
   const [
@@ -284,7 +287,7 @@ export const SnowplowInspector: FunctionComponent = () => {
   const Modal = activeModal && modals[activeModal];
 
   return (
-    <>
+    <ContentfulContext.Provider value={contentResolver}>
       <Toolbar
         key="toolbar"
         application={application}
@@ -333,6 +336,6 @@ export const SnowplowInspector: FunctionComponent = () => {
         />
       )}
       {Modal && <Modal key="modal" {...(modalOpts.current as any)} />}
-    </>
+    </ContentfulContext.Provider>
   );
 };
