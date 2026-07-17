@@ -95,29 +95,27 @@ const Options = () => {
             10,
           );
           if (!Number.isNaN(contentfulIndex)) {
-            const space = {
-              ...(options.contentfulSpaces[contentfulIndex] ?? EMPTY_SPACE),
-              [target.name]: target.value,
-            };
-            const contentfulSpaces = [...options.contentfulSpaces];
-            contentfulSpaces[contentfulIndex] = space;
+            setOptions((options) => {
+              const space = {
+                ...(options.contentfulSpaces[contentfulIndex] ?? EMPTY_SPACE),
+                [target.name]: target.value,
+              };
+              const contentfulSpaces = [...options.contentfulSpaces];
+              contentfulSpaces[contentfulIndex] = space;
 
-            if (
-              contentfulSpaces.find(
-                ({ spaceId, environment }, i) =>
-                  i !== contentfulIndex &&
-                  spaceId === space.spaceId &&
-                  environment === space.environment,
-              )
-            ) {
               target.setCustomValidity(
-                "Duplicate Contentful space/environment",
+                contentfulSpaces.find(
+                  ({ spaceId, environment }, i) =>
+                    i !== contentfulIndex &&
+                    spaceId === space.spaceId &&
+                    environment === space.environment,
+                )
+                  ? "Duplicate Contentful space/environment"
+                  : "",
               );
-            } else {
-              target.setCustomValidity("");
-            }
 
-            setOptions((options) => ({ ...options, contentfulSpaces }));
+              return { ...options, contentfulSpaces };
+            });
             return;
           }
 

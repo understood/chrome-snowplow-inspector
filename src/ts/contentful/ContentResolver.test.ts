@@ -273,6 +273,36 @@ describe("ContentResolver", () => {
     expect(attempts).toBe(2);
   });
 
+  test("falls back to a short wait when the rate limit header is malformed", async () => {
+    let attempts = 0;
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/limited")) {
+        attempts++;
+        return attempts === 1
+          ? status(429, { "X-Contentful-RateLimit-Reset": "soon" })
+          : json(entry("limited", { title: "Eventually" }));
+      }
+      return undefined;
+    });
+
+    const resolver = await makeResolver([BLOG]);
+    const result = await resolver.lookup("limited", "entry");
+    expect(result).toMatchObject({ status: "resolved", title: "Eventually" });
+    expect(attempts).toBe(2);
+  }, 10000);
+
+  test("bounds the in-memory cache size", async () => {
+    route((url) =>
+      url.includes("/content_types") ? json(CONTENT_TYPES) : undefined,
+    );
+
+    const resolver = await makeResolver([BLOG]);
+    for (let i = 0; i < 1100; i++) await resolver.lookup(`id${i}`, "entry");
+
+    expect((resolver as any).lookups.size).toBeLessThanOrEqual(1000);
+  }, 30000);
+
   test("coalesces concurrent lookups for the same id", async () => {
     route((url) => {
       if (url.includes("/content_types")) return json(CONTENT_TYPES);

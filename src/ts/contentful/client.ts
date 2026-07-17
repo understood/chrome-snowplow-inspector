@@ -58,8 +58,11 @@ export class SpaceClient {
           );
         }
         if (resp.status === 429 && !retried) {
+          const parsed = parseFloat(
+            resp.headers.get("X-Contentful-RateLimit-Reset") || "",
+          );
           const reset = Math.min(
-            parseFloat(resp.headers.get("X-Contentful-RateLimit-Reset") || "1"),
+            Number.isFinite(parsed) && parsed >= 0 ? parsed : 1,
             MAX_RATE_LIMIT_WAIT_S,
           );
           return new Promise<void>((fulfil) =>

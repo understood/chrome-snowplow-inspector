@@ -48,7 +48,12 @@ export const ContentfulTag: FunctionComponent<{
 
   if (result.status === "error")
     return (
-      <span class="contentful contentful--error" title={result.message}>
+      <span
+        class="contentful contentful--error"
+        title={result.message}
+        role="img"
+        aria-label={`Contentful lookup failed: ${result.message}`}
+      >
         ⚠️
       </span>
     );

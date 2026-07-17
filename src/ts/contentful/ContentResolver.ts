@@ -9,6 +9,7 @@ import type {
 
 const POSITIVE_TTL_MS = 60 * 60 * 1000;
 const NEGATIVE_TTL_MS = 5 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 1000;
 
 type CacheEntry = { expires: number; result: ResolvedContent };
 type PendingEntry = { expires: number; promise: Promise<ResolvedContent> };
@@ -100,6 +101,8 @@ export class ContentResolver {
     const key = `${kind}:${id}`;
     const now = Date.now();
 
+    if (this.lookups.size >= MAX_CACHE_ENTRIES) this.evict();
+
     const pending = this.lookups.get(key);
     if (pending && pending.expires > now) return pending.promise;
 
@@ -163,12 +166,35 @@ export class ContentResolver {
     return error || { status: "notfound", id };
   }
 
+  /** Drop expired entries, then soonest-expiring ones to stay under the cap. */
+  private evict() {
+    const now = Date.now();
+    for (const [key, entry] of this.lookups) {
+      if (entry.expires <= now) this.lookups.delete(key);
+    }
+    const excess = this.lookups.size - MAX_CACHE_ENTRIES + 1;
+    if (excess > 0) {
+      const oldest = [...this.lookups.entries()]
+        .sort((a, b) => a[1].expires - b[1].expires)
+        .slice(0, excess);
+      for (const [key] of oldest) this.lookups.delete(key);
+    }
+  }
+
   private persist(key: string, entry: CacheEntry) {
     const now = Date.now();
     for (const [k, e] of Object.entries(this.persisted)) {
       if (e.expires <= now) delete this.persisted[k];
     }
     this.persisted[key] = entry;
+    const entries = Object.entries(this.persisted);
+    const excess = entries.length - MAX_CACHE_ENTRIES;
+    if (excess > 0) {
+      const oldest = entries
+        .sort((a, b) => a[1].expires - b[1].expires)
+        .slice(0, excess);
+      for (const [k] of oldest) delete this.persisted[k];
+    }
     chrome.storage.local.set({ contentfulCache: this.persisted });
   }
 }
