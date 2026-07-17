@@ -60,6 +60,7 @@ export const ContentfulTag: FunctionComponent<{
       class="contentful contentful--resolved"
       href={result.url}
       target="_blank"
+      rel="noopener noreferrer"
       title={`Open in Contentful (${result.spaceLabel})`}
     >
       {result.title}

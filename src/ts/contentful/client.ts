@@ -51,7 +51,11 @@ export class SpaceClient {
         if (resp.status === 401 || resp.status === 403) {
           // bad credentials won't get better this session, stop asking
           this.healthy = false;
-          return Promise.reject("AUTH_ERROR");
+          return Promise.reject(
+            new Error(
+              `authorization failed (HTTP ${resp.status}), check the space's API tokens`,
+            ),
+          );
         }
         if (resp.status === 429 && !retried) {
           const reset = Math.min(
@@ -119,6 +123,13 @@ export class SpaceClient {
 
   private lookupContentType(id: string): Promise<ResolvedContent> {
     return this.types().then((types) => {
+      // types() swallows fetch failures; don't report auth problems as notfound
+      if (!this.healthy)
+        return {
+          status: "error" as const,
+          id,
+          message: `Contentful space "${this.label}" disabled after an authorization failure`,
+        };
       const ct = types.get(id);
       if (!ct) return { status: "notfound", id };
       return {

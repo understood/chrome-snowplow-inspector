@@ -246,6 +246,14 @@ describe("ContentResolver", () => {
     expect(fetchMock.mock.calls.length).toBe(calls);
   });
 
+  test("reports auth failures on content type lookups as errors, not notfound", async () => {
+    route(() => status(401));
+
+    const resolver = await makeResolver([MAIN]);
+    const result = await resolver.lookup("article", "content-type");
+    expect(result.status).toBe("error");
+  });
+
   test("retries once after a 429, honouring the rate limit reset", async () => {
     let attempts = 0;
     route((url) => {
