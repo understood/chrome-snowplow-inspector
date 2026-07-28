@@ -4,14 +4,35 @@ import { useEffect, useState } from "preact/hooks";
 import "./options.css";
 
 import { utmify } from "./ts/analytics";
+import { DEFAULT_RULES, validateRules } from "./ts/contentful";
+
+type ContentfulSpaceOption = {
+  label: string;
+  spaceId: string;
+  environment: string;
+  deliveryToken: string;
+  previewToken: string;
+};
 
 export type StoredOptions = {
   enableTracking: boolean;
   signalsSandboxToken: string;
   signalsSandboxUrl: string;
   signalsApiKeys: { org: string; apiKey: string; apiKeyId: string }[];
+  contentfulSpaces: ContentfulSpaceOption[];
+  contentfulRules: string;
   tunnelAddress: string;
 };
+
+const EMPTY_SPACE: ContentfulSpaceOption = {
+  label: "",
+  spaceId: "",
+  environment: "master",
+  deliveryToken: "",
+  previewToken: "",
+};
+
+const DEFAULT_RULES_JSON = JSON.stringify(DEFAULT_RULES, null, 2);
 
 const SAMPLE_UUID = "00000000-0000-0000-0000-000000000000";
 const UUID_PATTERN =
@@ -24,6 +45,8 @@ const Options = () => {
     signalsSandboxToken: "",
     signalsSandboxUrl: "",
     signalsApiKeys: [],
+    contentfulSpaces: [],
+    contentfulRules: "",
     tunnelAddress: "http://localhost:4040/",
   });
   const [status, setStatus] = useState("");
@@ -46,6 +69,9 @@ const Options = () => {
         signalsApiKeys: options.signalsApiKeys.filter(
           ({ org, apiKey, apiKeyId }) => !!(org && apiKey && apiKeyId),
         ),
+        contentfulSpaces: options.contentfulSpaces.filter(
+          ({ spaceId, deliveryToken }) => !!(spaceId && deliveryToken),
+        ),
       };
       chrome.storage.sync.set(validated, () => {
         setStatus("Preferences Saved");
@@ -56,7 +82,43 @@ const Options = () => {
   return (
     <form
       onChange={({ target }) => {
-        if (target instanceof HTMLInputElement) {
+        if (
+          target instanceof HTMLTextAreaElement &&
+          target.name === "contentfulRules"
+        ) {
+          target.setCustomValidity(validateRules(target.value) || "");
+          const contentfulRules = target.value;
+          setOptions((options) => ({ ...options, contentfulRules }));
+        } else if (target instanceof HTMLInputElement) {
+          const contentfulIndex = parseInt(
+            target.dataset.contentfulIndex || "",
+            10,
+          );
+          if (!Number.isNaN(contentfulIndex)) {
+            setOptions((options) => {
+              const space = {
+                ...(options.contentfulSpaces[contentfulIndex] ?? EMPTY_SPACE),
+                [target.name]: target.value,
+              };
+              const contentfulSpaces = [...options.contentfulSpaces];
+              contentfulSpaces[contentfulIndex] = space;
+
+              target.setCustomValidity(
+                contentfulSpaces.find(
+                  ({ spaceId, environment }, i) =>
+                    i !== contentfulIndex &&
+                    spaceId === space.spaceId &&
+                    environment === space.environment,
+                )
+                  ? "Duplicate Contentful space/environment"
+                  : "",
+              );
+
+              return { ...options, contentfulSpaces };
+            });
+            return;
+          }
+
           const apiKeyIndex = parseInt(target.dataset.apiKeyIndex || "", 10);
           if (!Number.isNaN(apiKeyIndex)) {
             const info = options.signalsApiKeys[apiKeyIndex] ?? {
@@ -268,6 +330,135 @@ const Options = () => {
               required={!!options.signalsSandboxUrl}
             />
           </label>
+        </fieldset>
+        <fieldset>
+          <legend>Contentful</legend>
+          <p>
+            Configure Contentful spaces to resolve content IDs found in event
+            entities into linked entry titles in the event detail view. Delivery
+            (and optional Preview) API tokens can be found in the Contentful web
+            app under Settings &gt; API keys for each space. Leave this empty to
+            disable Contentful resolution.
+          </p>
+          <fieldset>
+            <legend>Spaces</legend>
+            <div>
+              {options.contentfulSpaces.map(
+                (
+                  { label, spaceId, environment, deliveryToken, previewToken },
+                  i,
+                ) => (
+                  <fieldset key={i}>
+                    <label>
+                      Label
+                      <input
+                        type="text"
+                        name="label"
+                        data-contentful-index={i}
+                        placeholder="Main"
+                        value={label}
+                      />
+                    </label>
+                    <label>
+                      Space ID
+                      <input
+                        type="text"
+                        name="spaceId"
+                        data-contentful-index={i}
+                        placeholder="p0qf7j048i0q"
+                        value={spaceId}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Environment
+                      <input
+                        type="text"
+                        name="environment"
+                        data-contentful-index={i}
+                        placeholder="master"
+                        value={environment}
+                      />
+                    </label>
+                    <label>
+                      Delivery API token
+                      <input
+                        type="password"
+                        name="deliveryToken"
+                        data-contentful-index={i}
+                        value={deliveryToken}
+                        required
+                      />
+                    </label>
+                    <label>
+                      Preview API token (optional, resolves drafts)
+                      <input
+                        type="password"
+                        name="previewToken"
+                        data-contentful-index={i}
+                        value={previewToken}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOptions(({ contentfulSpaces, ...opts }) => ({
+                          ...opts,
+                          contentfulSpaces: contentfulSpaces.filter(
+                            (_, index) => index !== i,
+                          ),
+                        }))
+                      }
+                    >
+                      Remove space
+                    </button>
+                  </fieldset>
+                ),
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setOptions(({ contentfulSpaces, ...opts }) => ({
+                  ...opts,
+                  contentfulSpaces: contentfulSpaces.concat(EMPTY_SPACE),
+                }))
+              }
+            >
+              Add space
+            </button>
+          </fieldset>
+          <fieldset>
+            <legend>Detection rules (advanced)</legend>
+            <p>
+              JSON list of{" "}
+              <code>
+                {"{"} schema, paths, kind or discriminator {"}"}
+              </code>{" "}
+              rules describing where Contentful IDs appear in your entities.
+              Leave empty to use the built-in defaults.
+            </p>
+            <label>
+              Rules
+              <textarea
+                name="contentfulRules"
+                rows={10}
+                placeholder={DEFAULT_RULES_JSON}
+                value={options.contentfulRules}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() =>
+                setOptions((options) => ({
+                  ...options,
+                  contentfulRules: DEFAULT_RULES_JSON,
+                }))
+              }
+            >
+              Reset to defaults
+            </button>
+          </fieldset>
         </fieldset>
         <label>
           Ngrok tunnel address

@@ -22,6 +22,8 @@ import {
 import { JsonViewer } from "../../JSONViewer";
 import type { ModalSetter } from "../../Modals";
 
+import { ContentfulTag } from "./ContentfulTag";
+
 import "./EventPayload.css";
 
 type ProtocolField = (typeof protocol.paramMap)[keyof typeof protocol.paramMap];
@@ -145,6 +147,10 @@ type BeaconValueAttrs = {
   obj: unknown;
   resolver: Resolver;
   setModal?: ModalSetter;
+  /* location of this value within its self-describing entity, for decorators */
+  schema?: string;
+  path?: string;
+  parent?: unknown;
 };
 
 function isSDJ(obj: unknown): obj is { data: unknown; schema: string } {
@@ -261,7 +267,14 @@ const SDJValue: FunctionComponent<BeaconValueAttrs> = ({
         <tr>
           {Array.isArray(obj.data) ? null : <th>{p}</th>}
           <td>
-            <BeaconValue obj={val} resolver={resolver} setModal={setModal} />
+            <BeaconValue
+              obj={val}
+              resolver={resolver}
+              setModal={setModal}
+              schema={obj.schema}
+              path={p}
+              parent={obj.data}
+            />
             {isSDJ(val) ? null : <LabelType val={val} />}
           </td>
         </tr>
@@ -330,6 +343,9 @@ const BeaconValue: FunctionComponent<BeaconValueAttrs> = ({
   obj,
   resolver,
   setModal,
+  schema,
+  path,
+  parent,
 }) => {
   if (typeof obj !== "object" || obj === null) {
     switch (typeof obj) {
@@ -344,7 +360,17 @@ const BeaconValue: FunctionComponent<BeaconValueAttrs> = ({
             <BeaconValue resolver={resolver} obj={json} setModal={setModal} />
           );
         } catch (e) {
-          return <span>{obj}</span>;
+          return (
+            <>
+              <span>{obj}</span>
+              <ContentfulTag
+                value={obj}
+                schema={schema}
+                path={path}
+                parent={parent}
+              />
+            </>
+          );
         }
       default:
         return <span>{JSON.stringify(obj)}</span>;
@@ -361,6 +387,9 @@ const BeaconValue: FunctionComponent<BeaconValueAttrs> = ({
                   obj={val}
                   resolver={resolver}
                   setModal={setModal}
+                  schema={schema}
+                  path={path !== undefined ? `${path}.${p}` : undefined}
+                  parent={obj}
                 />
                 <LabelType val={val} />
               </td>

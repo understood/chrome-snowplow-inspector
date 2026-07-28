@@ -13,6 +13,9 @@ A debugging tool to help you examine and debug your link:https://snowplow.io[Sno
 
 Feedback, feature requests, pull requests, and bug reports are welcome! Please link:https://github.com/snowplow/chrome-snowplow-inspector/issues[file an issue].
 
+NOTE: This is Understood.org's fork, which adds inline Contentful ID resolution to the event detail view.
+See link:README.understood.adoc[README.understood.adoc] for setup, configuration, and the upstream sync procedure.
+
 == Install
 At the moment, only Chrome/Chromium are supported via an official app store, and builds for Firefox are available, but not supported.
 The extension also works in link:https://www.microsoft.com/en-us/edge[Microsoft Edge], but is not yet in the extension store.
