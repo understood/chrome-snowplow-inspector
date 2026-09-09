@@ -404,12 +404,22 @@ table.object {
   font-family: "Roboto";
   line-height: 1.25rem;
 
-  padding: 0 0.25rem;
-  border-radius: 0.25rem;
   margin-left: 0.375rem;
-  white-space: nowrap;
 
+  /* the badge stays on one line; any field list flows underneath it */
   &.contentful--resolved {
+    display: inline-block;
+    vertical-align: top;
+  }
+
+  .contentful__link,
+  &.contentful--error {
+    padding: 0 0.25rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+  }
+
+  .contentful__link {
     background-color: #d4e5fc;
     color: #012f6b;
     text-decoration: none;
@@ -440,6 +450,36 @@ table.object {
   .contentful__draft {
     background-color: #ffeeba;
     color: #724204;
+  }
+
+  .contentful__fields {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0 0.75rem;
+    margin: 0.125rem 0 0.25rem 0.25rem;
+  }
+
+  /* themed, unlike the self-contained chips above: the list sits directly
+     on the panel background, which inverts between light and dark */
+  .contentful__field {
+    color: var(--muted-foreground);
+  }
+
+  .contentful__value {
+    color: var(--foreground);
+    word-break: break-word;
+  }
+
+  /* reference fields link through to the entry they point at */
+  .contentful__value--link {
+    color: var(--foreground);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 0.125rem;
+
+    &:hover {
+      text-decoration-style: solid;
+    }
   }
 }
 

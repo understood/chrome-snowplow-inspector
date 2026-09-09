@@ -59,10 +59,19 @@ const route = (handler: Route) => {
   });
 };
 
-const makeResolver = async (spaces: ContentfulSpace[], rules = "") => {
+const makeResolver = async (
+  spaces: ContentfulSpace[],
+  rules = "",
+  fields = "",
+) => {
   (chrome.storage.sync.get as any).mockImplementation(
     (defaults: any, cb: any) =>
-      cb({ ...defaults, contentfulSpaces: spaces, contentfulRules: rules }),
+      cb({
+        ...defaults,
+        contentfulSpaces: spaces,
+        contentfulRules: rules,
+        contentfulFields: fields,
+      }),
   );
   const resolver = new ContentResolver();
   await resolver.ready;
@@ -116,6 +125,287 @@ describe("ContentResolver", () => {
       spaceLabel: "Main",
       draft: false,
       url: "https://app.contentful.com/spaces/mainspace/environments/master/entries/abc123",
+    });
+  });
+
+  test("falls back to the built-in default fields when unconfigured", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            internalName: "Internal label",
+            title: "Hello World",
+            slug: "hello-world",
+            siteSection: "articles",
+            notADefault: "ignored",
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver([MAIN]);
+    const result = await resolver.lookup("abc123", "entry");
+
+    // DEFAULT_FIELDS order, and nothing outside that list
+    expect(result).toMatchObject({
+      meta: [
+        { field: "internalName", value: "Internal label" },
+        { field: "title", value: "Hello World" },
+        { field: "slug", value: "hello-world" },
+        { field: "siteSection", value: "articles" },
+      ],
+    });
+  });
+
+  test("resolves a reference field to its target title, linked", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            landing: {
+              sys: { type: "Link", linkType: "Entry", id: "target789" },
+            },
+          }),
+        );
+      if (url.includes("/entries/target789"))
+        return json(entry("target789", { title: "Landing page" }));
+      return undefined;
+    });
+
+    const resolver = await makeResolver([MAIN], "", "landing");
+    const result = await resolver.lookup("abc123", "entry");
+
+    expect(result).toMatchObject({
+      meta: [
+        {
+          field: "landing",
+          value: "Landing page",
+          url: "https://app.contentful.com/spaces/mainspace/environments/master/entries/target789",
+        },
+      ],
+    });
+  });
+
+  test("falls back to the target id when a reference can't be read", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            landing: {
+              sys: { type: "Link", linkType: "Entry", id: "missing789" },
+            },
+          }),
+        );
+      return undefined; // target 404s
+    });
+
+    const resolver = await makeResolver([MAIN], "", "landing");
+    const result = await resolver.lookup("abc123", "entry");
+
+    expect(result).toMatchObject({
+      meta: [{ field: "landing", value: "missing789" }],
+    });
+  });
+
+  test("resolves references one level only", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "One",
+            landing: { sys: { type: "Link", linkType: "Entry", id: "two" } },
+          }),
+        );
+      // a reference cycle: two points back at abc123
+      if (url.includes("/entries/two"))
+        return json(
+          entry("two", {
+            title: "Two",
+            landing: { sys: { type: "Link", linkType: "Entry", id: "abc123" } },
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver([MAIN], "", "landing");
+    const result = await resolver.lookup("abc123", "entry");
+
+    expect(result).toMatchObject({
+      meta: [{ field: "landing", value: "Two" }],
+    });
+    // abc123 once, two once: the cycle does not fan out
+    expect(entryCalls().length).toBe(2);
+  });
+
+  test("still skips arrays and rich text", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            afterSurveyCompletion: [
+              { sys: { type: "Link", linkType: "Entry", id: "a" } },
+            ],
+            body: { nodeType: "document", content: [] },
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver(
+      [MAIN],
+      "",
+      "afterSurveyCompletion, body",
+    );
+    const result = await resolver.lookup("abc123", "entry");
+
+    expect((result as { meta?: unknown }).meta).toBeUndefined();
+  });
+
+  test("an explicit field list overrides the defaults", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            slug: "hello-world",
+            siteSection: "articles",
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver([MAIN], "", "siteSection");
+    const result = await resolver.lookup("abc123", "entry");
+
+    expect(result).toMatchObject({
+      meta: [{ field: "siteSection", value: "articles" }],
+    });
+  });
+
+  test("surfaces configured extra fields in the configured order", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            slug: "hello-world",
+            order: 3,
+            showSpanish: false,
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver([MAIN], "", "slug, order, showSpanish");
+    const result = await resolver.lookup("abc123", "entry");
+
+    expect(result).toMatchObject({
+      status: "resolved",
+      title: "Hello World",
+      meta: [
+        { field: "slug", value: "hello-world" },
+        { field: "order", value: "3" },
+        { field: "showSpanish", value: "false" },
+      ],
+    });
+  });
+
+  test("matches extra fields written as Contentful labels", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            pageKey: "SSI_WHAT_TO_EXPECT",
+            siteSection: "single_session_intervention",
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver([MAIN], "", "Page key, Site Section");
+    const result = await resolver.lookup("abc123", "entry");
+
+    // reported under the real API ids, not the configured spelling
+    expect(result).toMatchObject({
+      meta: [
+        { field: "pageKey", value: "SSI_WHAT_TO_EXPECT" },
+        { field: "siteSection", value: "single_session_intervention" },
+      ],
+    });
+  });
+
+  test("prefers an exact field id over a loose match", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            page_key: "snake",
+            pageKey: "camel",
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver([MAIN], "", "pageKey");
+    const result = await resolver.lookup("abc123", "entry");
+
+    expect(result).toMatchObject({
+      meta: [{ field: "pageKey", value: "camel" }],
+    });
+  });
+
+  test("skips extra fields that are absent, empty or not simple values", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            slug: "",
+            seo: { sys: { id: "linked" } },
+            tags: ["a", "b"],
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver([MAIN], "", "slug, seo, tags, missing");
+    const result = await resolver.lookup("abc123", "entry");
+
+    expect(result).toMatchObject({ status: "resolved" });
+    expect((result as { meta?: unknown }).meta).toBeUndefined();
+  });
+
+  test("does not reuse cached results across field list changes", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(entry("abc123", { title: "Hello World", slug: "a-slug" }));
+      return undefined;
+    });
+
+    const bare = await makeResolver([MAIN]);
+    expect((await bare.lookup("abc123", "entry")) as any).toMatchObject({
+      status: "resolved",
+    });
+
+    const withSlug = await makeResolver([MAIN], "", "slug");
+    expect(await withSlug.lookup("abc123", "entry")).toMatchObject({
+      meta: [{ field: "slug", value: "a-slug" }],
     });
   });
 
@@ -334,12 +624,11 @@ describe("ContentResolver", () => {
     const resolver = await makeResolver([MAIN]);
     await resolver.lookup("abc123", "entry");
 
-    expect(chrome.storage.local.set).toHaveBeenCalledWith({
-      contentfulCache: expect.objectContaining({
-        "entry:abc123": expect.objectContaining({
-          result: expect.objectContaining({ status: "resolved" }),
-        }),
-      }),
+    const [[persisted]] = (chrome.storage.local.set as any).mock.calls;
+    const cached = Object.keys(persisted.contentfulCache);
+    expect(cached).toEqual([expect.stringMatching(/^v\d+:entry:abc123(:|$)/)]);
+    expect(persisted.contentfulCache[cached[0]]).toMatchObject({
+      result: { status: "resolved" },
     });
 
     // within the TTL: served from cache

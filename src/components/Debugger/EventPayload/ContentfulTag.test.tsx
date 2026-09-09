@@ -81,6 +81,67 @@ describe("ContentfulTag", () => {
     expect(lookup).toHaveBeenCalledWith("3K9dOxAbCd", "entry");
   });
 
+  test("lists extra fields outside the link, as name/value pairs", async () => {
+    const { resolver } = stubResolver({
+      ...RESOLVED,
+      meta: [
+        { field: "slug", value: "what-is-dyslexia" },
+        { field: "siteSection", value: "articles" },
+      ],
+    });
+    const { container } = renderTag(resolver);
+
+    const link = await screen.findByRole("link");
+    // clicking a field must not navigate to Contentful
+    expect(link.textContent).not.toContain("what-is-dyslexia");
+
+    const fields = Array.from(
+      container.querySelectorAll(".contentful__field"),
+    ).map((el) => el.textContent);
+    const values = Array.from(
+      container.querySelectorAll(".contentful__value"),
+    ).map((el) => el.textContent);
+
+    expect(fields).toEqual(["slug", "siteSection"]);
+    expect(values).toEqual(["what-is-dyslexia", "articles"]);
+  });
+
+  test("renders a reference field as a link to the target entry", async () => {
+    const { resolver } = stubResolver({
+      ...RESOLVED,
+      meta: [
+        {
+          field: "landing",
+          value: "Landing page",
+          url: "https://app.contentful.com/spaces/x/environments/master/entries/target789",
+        },
+        { field: "slug", value: "what-is-dyslexia" },
+      ],
+    });
+    const { container } = renderTag(resolver);
+    await screen.findByText("Landing page");
+
+    const linked = container.querySelector(".contentful__value--link");
+    expect(linked).not.toBeNull();
+    expect(linked!.getAttribute("href")).toContain("entries/target789");
+    expect(linked!.textContent).toBe("Landing page");
+
+    // a plain value stays a span, not a link
+    const plain = container.querySelectorAll(
+      ".contentful__value:not(.contentful__value--link)",
+    );
+    expect(plain).toHaveLength(1);
+    expect(plain[0].textContent).toBe("what-is-dyslexia");
+  });
+
+  test("renders no field list when an entry has no extra fields", async () => {
+    const { resolver } = stubResolver();
+    const { container } = renderTag(resolver);
+
+    await screen.findByRole("link");
+    expect(container.querySelector(".contentful__fields")).toBeNull();
+  });
+
   test("shows a draft badge for preview-only entries", async () => {
     const { resolver } = stubResolver({ ...RESOLVED, draft: true });
     renderTag(resolver);

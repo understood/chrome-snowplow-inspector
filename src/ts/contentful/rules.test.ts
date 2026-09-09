@@ -5,6 +5,8 @@ import {
   matchPath,
   matchRule,
   matchSchema,
+  normalizeFieldName,
+  parseFields,
   parseRules,
   resolveKind,
   validateRules,
@@ -173,5 +175,45 @@ describe("validateRules / parseRules", () => {
     ]);
     expect(validateRules(json)).toBeUndefined();
     expect(parseRules(json)).toHaveLength(1);
+  });
+});
+
+describe("parseFields", () => {
+  test("splits, trims and drops blanks", () => {
+    expect(parseFields(" slug , internalName ")).toEqual([
+      "slug",
+      "internalName",
+    ]);
+    expect(parseFields("slug,,internalName,")).toEqual([
+      "slug",
+      "internalName",
+    ]);
+  });
+
+  test("preserves configured order and drops duplicates", () => {
+    expect(parseFields("b, a, b")).toEqual(["b", "a"]);
+  });
+
+  test("treats empty input as unconfigured, so defaults apply", () => {
+    expect(parseFields("")).toBeNull();
+    expect(parseFields("   ")).toBeNull();
+    expect(parseFields(" , - , ")).toBeNull();
+  });
+
+  test("keeps the first spelling of names that differ only in form", () => {
+    expect(parseFields("Page key, pageKey, page_key")).toEqual(["Page key"]);
+  });
+});
+
+describe("normalizeFieldName", () => {
+  test("collapses labels, casing and punctuation to one form", () => {
+    const forms = ["pageKey", "Page key", "page_key", "Page-Key", "PAGEKEY"];
+    for (const form of forms) expect(normalizeFieldName(form)).toBe("pagekey");
+  });
+
+  test("keeps distinct names distinct", () => {
+    expect(normalizeFieldName("siteSection")).not.toBe(
+      normalizeFieldName("surveyKey"),
+    );
   });
 });

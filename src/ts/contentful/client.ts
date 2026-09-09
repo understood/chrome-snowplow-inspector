@@ -1,4 +1,10 @@
-import type { ContentfulSpace, ContentKind, ResolvedContent } from "./types";
+import { normalizeFieldName } from "./rules";
+import type {
+  ContentfulSpace,
+  ContentKind,
+  ResolvedContent,
+  ResolvedField,
+} from "./types";
 
 const REQUEST_TIMEOUT_MS = 5000;
 const DELIVERY_HOST = "https://cdn.contentful.com";
@@ -7,6 +13,19 @@ const APP_HOST = "https://app.contentful.com";
 const MAX_RATE_LIMIT_WAIT_S = 10;
 
 type ContentTypeInfo = { name: string; displayField?: string };
+
+/** Recognise a Contentful reference field, e.g. { sys: { type: "Link", ... } }. */
+const linkSys = (
+  value: unknown,
+): { id: string; linkType: string } | undefined => {
+  if (typeof value !== "object" || value === null) return undefined;
+  const sys = (value as { sys?: unknown }).sys;
+  if (typeof sys !== "object" || sys === null) return undefined;
+  const { type, linkType, id } = sys as Record<string, unknown>;
+  if (type !== "Link" || typeof id !== "string" || typeof linkType !== "string")
+    return undefined;
+  return { id, linkType };
+};
 
 /**
  * Minimal Contentful Delivery/Preview API client for a single space.
@@ -17,9 +36,11 @@ export class SpaceClient {
   readonly spec: ContentfulSpace;
   private healthy = true;
   private contentTypes?: Promise<Map<string, ContentTypeInfo>>;
+  private readonly extra: string[];
 
-  constructor(spec: ContentfulSpace) {
+  constructor(spec: ContentfulSpace, extraFields: string[] = []) {
     this.spec = spec;
+    this.extra = extraFields;
   }
 
   get label(): string {
@@ -196,49 +217,165 @@ export class SpaceClient {
       }));
   }
 
+  /**
+   * Pick out the configured extra fields this resource actually carries,
+   * reporting them under their real API ids. A configured name matches
+   * loosely, so "Page key" as shown in Contentful finds `pageKey`.
+   *
+   * Links, arrays and rich text are skipped: they would only render as
+   * opaque objects, and resolving them would cost another request each.
+   */
+  private extraFields(
+    fields: Record<string, unknown>,
+  ): Promise<ResolvedField[] | undefined> {
+    const byNormal = new Map<string, string>();
+    for (const key of Object.keys(fields)) {
+      const normal = normalizeFieldName(key);
+      // on collision the first field wins, following the entry's own order
+      if (!byNormal.has(normal)) byNormal.set(normal, key);
+    }
+
+    const pending: Promise<ResolvedField | undefined>[] = [];
+    const seen = new Set<string>();
+    for (const configured of this.extra) {
+      const field =
+        configured in fields
+          ? configured
+          : byNormal.get(normalizeFieldName(configured));
+      if (field === undefined || seen.has(field)) continue;
+      seen.add(field);
+
+      const value = fields[field];
+      if (typeof value === "string") {
+        if (value) pending.push(Promise.resolve({ field, value }));
+      } else if (typeof value === "number" || typeof value === "boolean") {
+        pending.push(Promise.resolve({ field, value: String(value) }));
+      } else {
+        // arrays and rich text stay skipped; a single reference resolves
+        const link = linkSys(value);
+        if (link) pending.push(this.linkField(field, link));
+      }
+    }
+
+    return Promise.all(pending).then((found) => {
+      const list = found.filter((f): f is ResolvedField => f !== undefined);
+      return list.length ? list : undefined;
+    });
+  }
+
+  /**
+   * Resolve a reference field to its target's title, linked to Contentful.
+   * Falls back to the bare id when the target can't be read, so a broken or
+   * unpublished reference still shows something useful.
+   */
+  private linkField(
+    field: string,
+    link: { id: string; linkType: string },
+  ): Promise<ResolvedField> {
+    const kind = link.linkType === "Asset" ? "asset" : "entry";
+    const url = this.appUrl(kind === "asset" ? "assets" : "entries", link.id);
+    return this.targetTitle(link.id, kind).then((title) => ({
+      field,
+      value: title || link.id,
+      url,
+    }));
+  }
+
+  /**
+   * Title of a linked entry or asset. Deliberately does not run extraFields
+   * on the target: link fields resolve one level only, so a reference cycle
+   * cannot fan out into unbounded requests.
+   */
+  private targetTitle(
+    id: string,
+    kind: "entry" | "asset",
+  ): Promise<string | undefined> {
+    const collection = kind === "asset" ? "assets" : "entries";
+    const read = (host: string, token: string) =>
+      this.apiFetch(
+        host,
+        token,
+        `/${collection}/${encodeURIComponent(id)}`,
+      ).then((resp) => (resp.ok ? resp.json() : Promise.reject("HTTP_ERROR")));
+
+    return read(DELIVERY_HOST, this.spec.deliveryToken)
+      .catch(() =>
+        this.spec.previewToken
+          ? read(PREVIEW_HOST, this.spec.previewToken)
+          : Promise.reject("HTTP_ERROR"),
+      )
+      .then((json) => {
+        if (kind === "asset") {
+          const title = (json.fields || {}).title;
+          return typeof title === "string" ? title : undefined;
+        }
+        return this.types().then((types) => this.entryTitle(json, types).title);
+      })
+      .catch(() => undefined);
+  }
+
+  /** An entry's display title and content type name from its payload. */
+  private entryTitle(
+    json: any,
+    types: Map<string, ContentTypeInfo>,
+  ): { title: string | undefined; contentType: string | undefined } {
+    const ctId: string | undefined =
+      json.sys && json.sys.contentType && json.sys.contentType.sys
+        ? json.sys.contentType.sys.id
+        : undefined;
+    const ct = ctId ? types.get(ctId) : undefined;
+    const fields: Record<string, unknown> = json.fields || {};
+    let title: unknown =
+      ct && ct.displayField ? fields[ct.displayField] : undefined;
+    if (typeof title !== "string")
+      title = Object.values(fields).find((v) => typeof v === "string");
+    return {
+      title: typeof title === "string" ? title : undefined,
+      contentType: ct ? ct.name : ctId,
+    };
+  }
+
   private entryResult(
     json: any,
     id: string,
     draft: boolean,
   ): Promise<ResolvedContent> {
-    const ctId: string | undefined =
-      json.sys && json.sys.contentType && json.sys.contentType.sys
-        ? json.sys.contentType.sys.id
-        : undefined;
-    return this.types().then((types) => {
-      const ct = ctId ? types.get(ctId) : undefined;
-      const fields: Record<string, unknown> = json.fields || {};
-      let title: unknown =
-        ct && ct.displayField ? fields[ct.displayField] : undefined;
-      if (typeof title !== "string")
-        title = Object.values(fields).find((v) => typeof v === "string");
-
-      return {
-        status: "resolved",
-        id,
-        kind: "entry",
-        title: typeof title === "string" ? title : id,
-        contentType: ct ? ct.name : ctId,
-        spaceLabel: this.label,
-        draft,
-        url: this.appUrl("entries", id),
-      };
-    });
+    const fields: Record<string, unknown> = json.fields || {};
+    return this.types()
+      .then((types) => this.entryTitle(json, types))
+      .then(({ title, contentType }) =>
+        this.extraFields(fields).then((meta) => ({
+          status: "resolved" as const,
+          id,
+          kind: "entry" as const,
+          title: title || id,
+          contentType,
+          spaceLabel: this.label,
+          draft,
+          url: this.appUrl("entries", id),
+          meta,
+        })),
+      );
   }
 
-  private assetResult(json: any, id: string, draft: boolean): ResolvedContent {
+  private assetResult(
+    json: any,
+    id: string,
+    draft: boolean,
+  ): Promise<ResolvedContent> {
     const fields: Record<string, unknown> = json.fields || {};
     const title = fields.title;
-    return {
-      status: "resolved",
+    return this.extraFields(fields).then((meta) => ({
+      status: "resolved" as const,
       id,
-      kind: "asset",
+      kind: "asset" as const,
       title: typeof title === "string" ? title : id,
       contentType: "Asset",
       spaceLabel: this.label,
       draft,
       url: this.appUrl("assets", id),
-    };
+      meta,
+    }));
   }
 
   private appUrl(collection: string, id: string): string {

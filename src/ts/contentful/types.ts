@@ -22,6 +22,12 @@ export type DetectionRule = {
   };
 };
 
+/**
+ * An extra entry field surfaced alongside the resolved title. Reference
+ * fields carry `url`, pointing at the linked entry or asset in Contentful.
+ */
+export type ResolvedField = { field: string; value: string; url?: string };
+
 export type ResolvedContent =
   | {
       status: "resolved";
@@ -32,6 +38,8 @@ export type ResolvedContent =
       spaceLabel: string;
       draft: boolean;
       url: string;
+      /** Configured extra fields that this entry actually carries */
+      meta?: ResolvedField[];
     }
   | { status: "notfound"; id: string }
   | { status: "error"; id: string; message: string };

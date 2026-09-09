@@ -1,4 +1,4 @@
-import { h, type FunctionComponent } from "preact";
+import { Fragment, h, type FunctionComponent } from "preact";
 import { useContext, useEffect, useState } from "preact/hooks";
 
 import { resolveKind } from "../../../ts/contentful";
@@ -61,18 +61,42 @@ export const ContentfulTag: FunctionComponent<{
   if (result.status !== "resolved") return null;
 
   return (
-    <a
-      class="contentful contentful--resolved"
-      href={result.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={`Open in Contentful (${result.spaceLabel})`}
-    >
-      {result.title}
-      {result.contentType && (
-        <span class="contentful__type">{result.contentType}</span>
+    <span class="contentful contentful--resolved">
+      <a
+        class="contentful__link"
+        href={result.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Open in Contentful (${result.spaceLabel})`}
+      >
+        {result.title}
+        {result.contentType && (
+          <span class="contentful__type">{result.contentType}</span>
+        )}
+        {result.draft && <span class="contentful__draft">Draft</span>}
+      </a>
+      {result.meta && (
+        <span class="contentful__fields">
+          {result.meta.map(({ field, value, url }) => (
+            <Fragment key={field}>
+              <span class="contentful__field">{field}</span>
+              {url ? (
+                <a
+                  class="contentful__value contentful__value--link"
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open the referenced entry in Contentful"
+                >
+                  {value}
+                </a>
+              ) : (
+                <span class="contentful__value">{value}</span>
+              )}
+            </Fragment>
+          ))}
+        </span>
       )}
-      {result.draft && <span class="contentful__draft">Draft</span>}
-    </a>
+    </span>
   );
 };

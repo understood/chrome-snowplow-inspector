@@ -1,11 +1,25 @@
 import { SpaceClient } from "./client";
-import { DEFAULT_RULES, matchRule, parseRules } from "./rules";
+import {
+  DEFAULT_FIELDS,
+  DEFAULT_RULES,
+  matchRule,
+  parseFields,
+  parseRules,
+} from "./rules";
 import type {
   ContentfulSpace,
   ContentKind,
   DetectionRule,
   ResolvedContent,
 } from "./types";
+
+/**
+ * Bump whenever a change alters the shape or content of a resolved result,
+ * so persisted entries from an older build are not reused. The field list is
+ * already part of the cache key, but identical configuration across two
+ * builds would otherwise hit stale results for the rest of their TTL.
+ */
+const CACHE_VERSION = 2;
 
 const POSITIVE_TTL_MS = 60 * 60 * 1000;
 const NEGATIVE_TTL_MS = 5 * 60 * 1000;
@@ -17,6 +31,7 @@ type PendingEntry = { expires: number; promise: Promise<ResolvedContent> };
 const SYNC_DEFAULTS = {
   contentfulSpaces: [] as ContentfulSpace[],
   contentfulRules: "",
+  contentfulFields: "",
 };
 
 /**
@@ -30,6 +45,7 @@ const SYNC_DEFAULTS = {
 export class ContentResolver {
   private clients: SpaceClient[] = [];
   private rules: DetectionRule[] = DEFAULT_RULES;
+  private fieldsKey = "";
   private readonly lookups: Map<string, PendingEntry> = new Map();
   private readonly hitCache: Map<string, SpaceClient> = new Map();
   private persisted: Record<string, CacheEntry> = {};
@@ -56,7 +72,9 @@ export class ContentResolver {
       chrome.storage.onChanged.addListener((changes, area) => {
         if (
           area === "sync" &&
-          ("contentfulSpaces" in changes || "contentfulRules" in changes)
+          ("contentfulSpaces" in changes ||
+            "contentfulRules" in changes ||
+            "contentfulFields" in changes)
         )
           this.loadConfig().then(() => this.notify());
       });
@@ -66,10 +84,13 @@ export class ContentResolver {
     return new Promise((fulfil) =>
       chrome.storage.sync.get(
         SYNC_DEFAULTS,
-        ({ contentfulSpaces, contentfulRules }) => {
+        ({ contentfulSpaces, contentfulRules, contentfulFields }) => {
+          const extraFields =
+            parseFields(contentfulFields || "") ?? DEFAULT_FIELDS;
+          this.fieldsKey = extraFields.join(",");
           this.clients = ((contentfulSpaces as ContentfulSpace[]) || [])
             .filter((space) => space.spaceId && space.deliveryToken)
-            .map((space) => new SpaceClient(space));
+            .map((space) => new SpaceClient(space, extraFields));
           this.rules = parseRules(contentfulRules || "") ?? DEFAULT_RULES;
           this.lookups.clear();
           this.hitCache.clear();
@@ -97,8 +118,18 @@ export class ContentResolver {
     return matchRule(this.rules, schema, path);
   }
 
+  /**
+   * Cache identity for a lookup. The resolver version and configured field
+   * list are both part of it: a cached result carries those fields' values,
+   * so entries from an older build or configuration must not be reused.
+   * Superseded keys expire on their own TTL.
+   */
+  private cacheKey(id: string, kind: ContentKind): string {
+    return `v${CACHE_VERSION}:${kind}:${id}:${this.fieldsKey}`;
+  }
+
   lookup(id: string, kind: ContentKind): Promise<ResolvedContent> {
-    const key = `${kind}:${id}`;
+    const key = this.cacheKey(id, kind);
     const now = Date.now();
 
     if (this.lookups.size >= MAX_CACHE_ENTRIES) this.evict();
@@ -147,7 +178,7 @@ export class ContentResolver {
         message: "No Contentful spaces configured",
       };
 
-    const key = `${kind}:${id}`;
+    const key = this.cacheKey(id, kind);
     const hit = this.hitCache.get(key);
     const candidates = hit
       ? [hit, ...this.clients.filter((client) => client !== hit)]

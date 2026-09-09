@@ -34,6 +34,23 @@ export const DEFAULT_RULES: DetectionRule[] = [
   },
 ];
 
+/**
+ * Fields surfaced on resolved entries when the options page leaves the field
+ * list empty, mirroring how DEFAULT_RULES applies to an empty rules box.
+ * These are the identifying fields across the org.understood content types;
+ * a type that lacks one simply omits it.
+ */
+export const DEFAULT_FIELDS: string[] = [
+  "internalName",
+  "title",
+  "slug",
+  "pageKey",
+  "siteSection",
+  "surveyKey",
+  "lessonType",
+  "landing",
+];
+
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const segmentMatch = (pattern: string, value: string): boolean => {
@@ -123,6 +140,33 @@ export const validateRules = (text: string): string | undefined => {
       return `Rule ${i + 1} must have a schema pattern, a non-empty paths list, and a kind or discriminator`;
   }
   return undefined;
+};
+
+/**
+ * Collapse a field name to a comparable form, so a name can be written the
+ * way Contentful labels it ("Page key") rather than as the API id ("pageKey").
+ */
+export const normalizeFieldName = (name: string): string =>
+  name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Parse the extra-fields configuration string: a comma-separated list of
+ * entry field names to surface on resolved badges. Order is preserved, and
+ * blanks plus names that differ only in case or punctuation are dropped.
+ * Returns null when nothing usable is configured, in which case
+ * DEFAULT_FIELDS should apply.
+ */
+export const parseFields = (text: string): string[] | null => {
+  const seen = new Set<string>();
+  const fields: string[] = [];
+  for (const field of text.split(",").map((field) => field.trim())) {
+    if (!field) continue;
+    const normal = normalizeFieldName(field);
+    if (!normal || seen.has(normal)) continue;
+    seen.add(normal);
+    fields.push(field);
+  }
+  return fields.length ? fields : null;
 };
 
 /**

@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import "./options.css";
 
 import { utmify } from "./ts/analytics";
-import { DEFAULT_RULES, validateRules } from "./ts/contentful";
+import { DEFAULT_FIELDS, DEFAULT_RULES, validateRules } from "./ts/contentful";
 
 type ContentfulSpaceOption = {
   label: string;
@@ -21,6 +21,7 @@ export type StoredOptions = {
   signalsApiKeys: { org: string; apiKey: string; apiKeyId: string }[];
   contentfulSpaces: ContentfulSpaceOption[];
   contentfulRules: string;
+  contentfulFields: string;
   tunnelAddress: string;
 };
 
@@ -33,6 +34,7 @@ const EMPTY_SPACE: ContentfulSpaceOption = {
 };
 
 const DEFAULT_RULES_JSON = JSON.stringify(DEFAULT_RULES, null, 2);
+const DEFAULT_FIELDS_LIST = DEFAULT_FIELDS.join(", ");
 
 const SAMPLE_UUID = "00000000-0000-0000-0000-000000000000";
 const UUID_PATTERN =
@@ -47,6 +49,7 @@ const Options = () => {
     signalsApiKeys: [],
     contentfulSpaces: [],
     contentfulRules: "",
+    contentfulFields: "",
     tunnelAddress: "http://localhost:4040/",
   });
   const [status, setStatus] = useState("");
@@ -458,6 +461,28 @@ const Options = () => {
             >
               Reset to defaults
             </button>
+          </fieldset>
+          <fieldset>
+            <legend>Extra fields</legend>
+            <p>
+              Comma-separated entry field names to show on the badge when the
+              resolved entry has them, e.g. <code>slug, internalName</code>.
+              Names may be written as Contentful labels (<code>Page key</code>)
+              or as API ids (<code>pageKey</code>); the badge always reports the
+              API id. Fields holding links, lists or rich text are skipped.
+              Different content types carry different fields, so list every
+              field you care about — absent ones are simply omitted. Leave empty
+              to use the built-in defaults.
+            </p>
+            <label>
+              Fields
+              <input
+                type="text"
+                name="contentfulFields"
+                placeholder={DEFAULT_FIELDS_LIST}
+                value={options.contentfulFields}
+              />
+            </label>
           </fieldset>
         </fieldset>
         <label>

@@ -1,10 +1,13 @@
 export { ContentResolver } from "./ContentResolver";
 export { SpaceClient } from "./client";
 export {
+  DEFAULT_FIELDS,
   DEFAULT_RULES,
   matchPath,
   matchRule,
   matchSchema,
+  normalizeFieldName,
+  parseFields,
   parseRules,
   resolveKind,
   validateRules,
@@ -14,4 +17,5 @@ export type {
   ContentKind,
   DetectionRule,
   ResolvedContent,
+  ResolvedField,
 } from "./types";
