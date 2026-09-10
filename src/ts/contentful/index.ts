@@ -3,6 +3,7 @@ export { SpaceClient } from "./client";
 export {
   DEFAULT_FIELDS,
   DEFAULT_RULES,
+  formatFields,
   matchPath,
   matchRule,
   matchSchema,
@@ -16,6 +17,7 @@ export type {
   ContentfulSpace,
   ContentKind,
   DetectionRule,
+  FieldSpec,
   ResolvedContent,
   ResolvedField,
 } from "./types";

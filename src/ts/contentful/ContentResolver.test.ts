@@ -150,7 +150,11 @@ describe("ContentResolver", () => {
     // DEFAULT_FIELDS order, and nothing outside that list
     expect(result).toMatchObject({
       meta: [
-        { field: "internalName", value: "Internal label" },
+        {
+          field: "internalName",
+          label: "internalName/Unit Name",
+          value: "Internal label",
+        },
         { field: "title", value: "Hello World" },
         { field: "slug", value: "hello-world" },
         { field: "siteSection", value: "articles" },
@@ -267,6 +271,36 @@ describe("ContentResolver", () => {
     const result = await resolver.lookup("abc123", "entry");
 
     expect((result as { meta?: unknown }).meta).toBeUndefined();
+  });
+
+  test("reports a configured alias as the field label", async () => {
+    route((url) => {
+      if (url.includes("/content_types")) return json(CONTENT_TYPES);
+      if (url.includes("/entries/abc123"))
+        return json(
+          entry("abc123", {
+            title: "Hello World",
+            internalName: "ADHD Unstuck",
+            slug: "adhd-unstuck",
+          }),
+        );
+      return undefined;
+    });
+
+    const resolver = await makeResolver(
+      [MAIN],
+      "",
+      "internalName as Unit Name, slug",
+    );
+    const result = await resolver.lookup("abc123", "entry");
+
+    // the API id is kept alongside the label
+    expect(result).toMatchObject({
+      meta: [
+        { field: "internalName", label: "Unit Name", value: "ADHD Unstuck" },
+        { field: "slug", value: "adhd-unstuck" },
+      ],
+    });
   });
 
   test("an explicit field list overrides the defaults", async () => {

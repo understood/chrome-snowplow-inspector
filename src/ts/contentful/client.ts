@@ -2,6 +2,7 @@ import { normalizeFieldName } from "./rules";
 import type {
   ContentfulSpace,
   ContentKind,
+  FieldSpec,
   ResolvedContent,
   ResolvedField,
 } from "./types";
@@ -36,9 +37,9 @@ export class SpaceClient {
   readonly spec: ContentfulSpace;
   private healthy = true;
   private contentTypes?: Promise<Map<string, ContentTypeInfo>>;
-  private readonly extra: string[];
+  private readonly extra: FieldSpec[];
 
-  constructor(spec: ContentfulSpace, extraFields: string[] = []) {
+  constructor(spec: ContentfulSpace, extraFields: FieldSpec[] = []) {
     this.spec = spec;
     this.extra = extraFields;
   }
@@ -237,23 +238,21 @@ export class SpaceClient {
 
     const pending: Promise<ResolvedField | undefined>[] = [];
     const seen = new Set<string>();
-    for (const configured of this.extra) {
+    for (const { name, label } of this.extra) {
       const field =
-        configured in fields
-          ? configured
-          : byNormal.get(normalizeFieldName(configured));
+        name in fields ? name : byNormal.get(normalizeFieldName(name));
       if (field === undefined || seen.has(field)) continue;
       seen.add(field);
 
       const value = fields[field];
       if (typeof value === "string") {
-        if (value) pending.push(Promise.resolve({ field, value }));
+        if (value) pending.push(Promise.resolve({ field, label, value }));
       } else if (typeof value === "number" || typeof value === "boolean") {
-        pending.push(Promise.resolve({ field, value: String(value) }));
+        pending.push(Promise.resolve({ field, label, value: String(value) }));
       } else {
         // arrays and rich text stay skipped; a single reference resolves
         const link = linkSys(value);
-        if (link) pending.push(this.linkField(field, link));
+        if (link) pending.push(this.linkField(field, label, link));
       }
     }
 
@@ -270,12 +269,14 @@ export class SpaceClient {
    */
   private linkField(
     field: string,
+    label: string | undefined,
     link: { id: string; linkType: string },
   ): Promise<ResolvedField> {
     const kind = link.linkType === "Asset" ? "asset" : "entry";
     const url = this.appUrl(kind === "asset" ? "assets" : "entries", link.id);
     return this.targetTitle(link.id, kind).then((title) => ({
       field,
+      label,
       value: title || link.id,
       url,
     }));

@@ -59,7 +59,10 @@ internalName, title, slug, pageKey, siteSection, surveyKey, lessonType, landing
 ----
 
 Names may be written as Contentful labels (`Page key`) or as API ids (`pageKey`) — matching
-ignores case and punctuation — and the badge always reports the API id.
+ignores case and punctuation.
+Append `as <label>` to relabel a field on the badge, e.g. `internalName as Unit Name`; the API
+id stays available as the row's hover text.
+Without an alias the badge reports the API id.
 Different content types carry different fields, so a field a type lacks is simply omitted.
 
 A field holding a single reference (like `landing`) resolves to its target's title, linked to

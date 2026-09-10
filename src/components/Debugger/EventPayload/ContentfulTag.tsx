@@ -77,9 +77,11 @@ export const ContentfulTag: FunctionComponent<{
       </a>
       {result.meta && (
         <span class="contentful__fields">
-          {result.meta.map(({ field, value, url }) => (
+          {result.meta.map(({ field, label, value, url }) => (
             <Fragment key={field}>
-              <span class="contentful__field">{field}</span>
+              <span class="contentful__field" title={field}>
+                {label || field}
+              </span>
               {url ? (
                 <a
                   class="contentful__value contentful__value--link"

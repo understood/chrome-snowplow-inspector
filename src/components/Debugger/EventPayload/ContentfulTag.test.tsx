@@ -134,6 +134,22 @@ describe("ContentfulTag", () => {
     expect(plain[0].textContent).toBe("what-is-dyslexia");
   });
 
+  test("shows the alias as the field name, keeping the api id on hover", async () => {
+    const { resolver } = stubResolver({
+      ...RESOLVED,
+      meta: [
+        { field: "internalName", label: "Unit Name", value: "ADHD Unstuck" },
+        { field: "slug", value: "adhd-unstuck" },
+      ],
+    });
+    const { container } = renderTag(resolver);
+    await screen.findByText("Unit Name");
+
+    const names = Array.from(container.querySelectorAll(".contentful__field"));
+    expect(names.map((el) => el.textContent)).toEqual(["Unit Name", "slug"]);
+    expect(names[0].getAttribute("title")).toBe("internalName");
+  });
+
   test("renders no field list when an entry has no extra fields", async () => {
     const { resolver } = stubResolver();
     const { container } = renderTag(resolver);

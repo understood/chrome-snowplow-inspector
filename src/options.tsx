@@ -4,7 +4,12 @@ import { useEffect, useState } from "preact/hooks";
 import "./options.css";
 
 import { utmify } from "./ts/analytics";
-import { DEFAULT_FIELDS, DEFAULT_RULES, validateRules } from "./ts/contentful";
+import {
+  DEFAULT_FIELDS,
+  DEFAULT_RULES,
+  formatFields,
+  validateRules,
+} from "./ts/contentful";
 
 type ContentfulSpaceOption = {
   label: string;
@@ -34,7 +39,7 @@ const EMPTY_SPACE: ContentfulSpaceOption = {
 };
 
 const DEFAULT_RULES_JSON = JSON.stringify(DEFAULT_RULES, null, 2);
-const DEFAULT_FIELDS_LIST = DEFAULT_FIELDS.join(", ");
+const DEFAULT_FIELDS_LIST = formatFields(DEFAULT_FIELDS);
 
 const SAMPLE_UUID = "00000000-0000-0000-0000-000000000000";
 const UUID_PATTERN =
@@ -469,10 +474,12 @@ const Options = () => {
               resolved entry has them, e.g. <code>slug, internalName</code>.
               Names may be written as Contentful labels (<code>Page key</code>)
               or as API ids (<code>pageKey</code>); the badge always reports the
-              API id. Fields holding links, lists or rich text are skipped.
-              Different content types carry different fields, so list every
-              field you care about — absent ones are simply omitted. Leave empty
-              to use the built-in defaults.
+              API id. Add <code>as Your Label</code> after a name to relabel it
+              on the badge, e.g. <code>internalName as Unit Name</code>. Fields
+              holding links, lists or rich text are skipped. Different content
+              types carry different fields, so list every field you care about —
+              absent ones are simply omitted. Leave empty to use the built-in
+              defaults.
             </p>
             <label>
               Fields

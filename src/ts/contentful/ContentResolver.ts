@@ -2,6 +2,7 @@ import { SpaceClient } from "./client";
 import {
   DEFAULT_FIELDS,
   DEFAULT_RULES,
+  formatFields,
   matchRule,
   parseFields,
   parseRules,
@@ -87,7 +88,8 @@ export class ContentResolver {
         ({ contentfulSpaces, contentfulRules, contentfulFields }) => {
           const extraFields =
             parseFields(contentfulFields || "") ?? DEFAULT_FIELDS;
-          this.fieldsKey = extraFields.join(",");
+          // labels included: relabelling changes what a cached result renders
+          this.fieldsKey = formatFields(extraFields);
           this.clients = ((contentfulSpaces as ContentfulSpace[]) || [])
             .filter((space) => space.spaceId && space.deliveryToken)
             .map((space) => new SpaceClient(space, extraFields));
