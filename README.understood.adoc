@@ -46,6 +46,30 @@ Which entity fields are treated as Contentful IDs is configurable in the options
 
 `schema` is an Iglu URI pattern (`*` wildcards allowed per segment), `paths` are dot-separated locations within the entity data (`*` matches any single key or array index), and the kind of ID is either fixed (`kind`: `entry`, `asset`, or `content-type`) or derived from a sibling field (`discriminator`); values not in the discriminator map are left undecorated.
 Leave the rules field empty to use these defaults.
+
+== Extra fields
+
+Resolved entries show their title and content type, plus any of a configured list of entry
+fields the entry happens to carry, rendered as a name/value list under the badge.
+The options page takes a comma-separated list; leave it empty to use the built-in defaults:
+
+[source]
+----
+internalName, title, slug, pageKey, siteSection, surveyKey, lessonType, landing
+----
+
+Names may be written as Contentful labels (`Page key`) or as API ids (`pageKey`) — matching
+ignores case and punctuation.
+Append `as <label>` to relabel a field on the badge, e.g. `internalName as Unit Name`; the API
+id stays available as the row's hover text.
+Without an alias the badge reports the API id.
+Different content types carry different fields, so a field a type lacks is simply omitted.
+
+A field holding a single reference (like `landing`) resolves to its target's title, linked to
+that entry or asset in Contentful; if the target can't be read the bare id is shown instead.
+References resolve one level only, so a reference cycle can't fan out into unbounded requests.
+Fields holding arrays or rich text are skipped, since they would only render as opaque objects.
+
 The implementation lives in `src/ts/contentful/` and is deliberately generic — nothing Understood-specific is hardcoded outside the default rules — so it could be offered upstream.
 
 == Syncing with upstream and releases

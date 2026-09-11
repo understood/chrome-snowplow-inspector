@@ -22,6 +22,21 @@ export type DetectionRule = {
   };
 };
 
+/** A configured extra field: an entry field name, optionally relabelled. */
+export type FieldSpec = { name: string; label?: string };
+
+/**
+ * An extra entry field surfaced alongside the resolved title. `field` is the
+ * real API id; `label` is the configured alias when one was given. Reference
+ * fields carry `url`, pointing at the linked entry or asset in Contentful.
+ */
+export type ResolvedField = {
+  field: string;
+  label?: string;
+  value: string;
+  url?: string;
+};
+
 export type ResolvedContent =
   | {
       status: "resolved";
@@ -32,6 +47,8 @@ export type ResolvedContent =
       spaceLabel: string;
       draft: boolean;
       url: string;
+      /** Configured extra fields that this entry actually carries */
+      meta?: ResolvedField[];
     }
   | { status: "notfound"; id: string }
   | { status: "error"; id: string; message: string };

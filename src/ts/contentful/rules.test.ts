@@ -4,7 +4,10 @@ import {
   DEFAULT_RULES,
   matchPath,
   matchRule,
+  formatFields,
   matchSchema,
+  normalizeFieldName,
+  parseFields,
   parseRules,
   resolveKind,
   validateRules,
@@ -173,5 +176,79 @@ describe("validateRules / parseRules", () => {
     ]);
     expect(validateRules(json)).toBeUndefined();
     expect(parseRules(json)).toHaveLength(1);
+  });
+});
+
+describe("parseFields", () => {
+  test("splits, trims and drops blanks", () => {
+    expect(parseFields(" slug , internalName ")).toEqual([
+      { name: "slug" },
+      { name: "internalName" },
+    ]);
+    expect(parseFields("slug,,internalName,")).toEqual([
+      { name: "slug" },
+      { name: "internalName" },
+    ]);
+  });
+
+  test("reads an `as` alias as the display label", () => {
+    expect(parseFields("internalName as Unit Name, slug")).toEqual([
+      { name: "internalName", label: "Unit Name" },
+      { name: "slug" },
+    ]);
+  });
+
+  test("splits an alias on the first `as` only", () => {
+    expect(parseFields("slug as Path as Used")).toEqual([
+      { name: "slug", label: "Path as Used" },
+    ]);
+  });
+
+  test("ignores an alias with no field name, and an empty label", () => {
+    expect(parseFields("as Unit Name")).toBeNull();
+    expect(parseFields("internalName as ")).toEqual([{ name: "internalName" }]);
+  });
+
+  test("does not treat a name containing 'as' as an alias", () => {
+    expect(parseFields("hasAssets, className")).toEqual([
+      { name: "hasAssets" },
+      { name: "className" },
+    ]);
+  });
+
+  test("preserves configured order and drops duplicates", () => {
+    expect(parseFields("b, a, b")).toEqual([{ name: "b" }, { name: "a" }]);
+  });
+
+  test("treats empty input as unconfigured, so defaults apply", () => {
+    expect(parseFields("")).toBeNull();
+    expect(parseFields("   ")).toBeNull();
+    expect(parseFields(" , - , ")).toBeNull();
+  });
+
+  test("keeps the first spelling of names that differ only in form", () => {
+    expect(parseFields("Page key, pageKey, page_key")).toEqual([
+      { name: "Page key" },
+    ]);
+  });
+});
+
+describe("formatFields", () => {
+  test("round-trips a configuration string", () => {
+    const text = "internalName as Unit Name, slug, pageKey as Page Key";
+    expect(formatFields(parseFields(text)!)).toBe(text);
+  });
+});
+
+describe("normalizeFieldName", () => {
+  test("collapses labels, casing and punctuation to one form", () => {
+    const forms = ["pageKey", "Page key", "page_key", "Page-Key", "PAGEKEY"];
+    for (const form of forms) expect(normalizeFieldName(form)).toBe("pagekey");
+  });
+
+  test("keeps distinct names distinct", () => {
+    expect(normalizeFieldName("siteSection")).not.toBe(
+      normalizeFieldName("surveyKey"),
+    );
   });
 });

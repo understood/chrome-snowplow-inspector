@@ -1,4 +1,4 @@
-import type { ContentKind, DetectionRule } from "./types";
+import type { ContentKind, DetectionRule, FieldSpec } from "./types";
 
 const ENTRY_ASSET_DISCRIMINATOR = {
   field: "type",
@@ -32,6 +32,23 @@ export const DEFAULT_RULES: DetectionRule[] = [
     paths: ["data.*.id"],
     discriminator: ENTRY_ASSET_DISCRIMINATOR,
   },
+];
+
+/**
+ * Fields surfaced on resolved entries when the options page leaves the field
+ * list empty, mirroring how DEFAULT_RULES applies to an empty rules box.
+ * These are the identifying fields across the org.understood content types;
+ * a type that lacks one simply omits it.
+ */
+export const DEFAULT_FIELDS: FieldSpec[] = [
+  { name: "internalName", label: "internalName/Unit Name" },
+  { name: "title" },
+  { name: "slug" },
+  { name: "pageKey" },
+  { name: "siteSection" },
+  { name: "surveyKey" },
+  { name: "lessonType" },
+  { name: "landing" },
 ];
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -124,6 +141,53 @@ export const validateRules = (text: string): string | undefined => {
   }
   return undefined;
 };
+
+/**
+ * Collapse a field name to a comparable form, so a name can be written the
+ * way Contentful labels it ("Page key") rather than as the API id ("pageKey").
+ */
+export const normalizeFieldName = (name: string): string =>
+  name.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Parse the extra-fields configuration string: a comma-separated list of
+ * entry field names to surface on resolved badges. Order is preserved, and
+ * blanks plus names that differ only in case or punctuation are dropped.
+ * Returns null when nothing usable is configured, in which case
+ * DEFAULT_FIELDS should apply.
+ */
+/** `fieldName as Display Label`, with the label optional. */
+const ALIAS = /(?:^|\s)as(?:\s+|$)/i;
+
+const parseFieldSpec = (entry: string): FieldSpec | undefined => {
+  const alias = ALIAS.exec(entry);
+  if (!alias) return { name: entry };
+  const name = entry.slice(0, alias.index).trim();
+  const label = entry.slice(alias.index + alias[0].length).trim();
+  if (!name) return undefined;
+  return label ? { name, label } : { name };
+};
+
+export const parseFields = (text: string): FieldSpec[] | null => {
+  const seen = new Set<string>();
+  const fields: FieldSpec[] = [];
+  for (const entry of text.split(",").map((entry) => entry.trim())) {
+    if (!entry) continue;
+    const spec = parseFieldSpec(entry);
+    if (!spec) continue;
+    const normal = normalizeFieldName(spec.name);
+    if (!normal || seen.has(normal)) continue;
+    seen.add(normal);
+    fields.push(spec);
+  }
+  return fields.length ? fields : null;
+};
+
+/** Render a field list back into its configuration form; round-trips parseFields. */
+export const formatFields = (fields: FieldSpec[]): string =>
+  fields
+    .map(({ name, label }) => (label ? `${name} as ${label}` : name))
+    .join(", ");
 
 /**
  * Parse a detection rules configuration string.
